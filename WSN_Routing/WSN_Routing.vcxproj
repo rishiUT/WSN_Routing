@@ -145,6 +145,8 @@
     <ClInclude Include="actuator.hpp" />
     <ClInclude Include="algorithm.hpp" />
     <ClInclude Include="algorithm_base.h" />
+    <ClInclude Include="algorithm_pegasis.h" />
+    <ClInclude Include="algorithm_raser.h" />
     <ClInclude Include="algorithm_test.h" />
     <ClInclude Include="environment.h" />
     <ClInclude Include="message.hpp" />

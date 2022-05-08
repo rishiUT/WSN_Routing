@@ -50,5 +50,11 @@
     <ClInclude Include="algorithm_test.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="algorithm_raser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="algorithm_pegasis.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -5,6 +5,17 @@
 #include <queue>
 #include "algorithm_base.h"
 
+/*
+ *  NOTE: Add environment neighbor list
+ *      The current neighbor list contains all neighbors, even if the node shouldn't know about it yet
+ *          This should be changed for accuracy's sake, if not for the sake of this simulation
+ *          This would require regular "I am alive" broadcasts to keep the node neighbor list up-to-date, though
+ *      The environment neighbor list should be used for broadcasts and debugging
+ *      The ordinary neighbor list will be used the way it's used right now, except the environment will never add neighbors to it
+ *
+ */
+
+
 namespace DC
 {
 
@@ -26,18 +37,21 @@ namespace DC
         coordinates(int x, int y) { x_ = x; y_ = y; }
     };
 
-
-
     struct env_data {
         coordinates location_;
 
         env_data() = default;
     };
 
+    constexpr double MSG_SEND_COST = 170;
+    constexpr double MSG_RECV_COST = 50;
+    constexpr double AWAKE_COST = 15;
+
+
     class Node
     {
     public:
-		inline 					    Node(int label, int x, int y, bool is_actuator, bool is_active, AlgorithmBase& algo);
+		inline 					    Node(int label, int x, int y, bool is_actuator, bool is_active, AlgorithmBase& algo, double battery);
         inline                      Node(Node const& other) = delete;
         inline Node&                operator=(Node const& other) = delete;
         inline                      Node(Node&& other) = delete;
@@ -53,15 +67,18 @@ namespace DC
         inline int                  distance_to(Node& other) const;
         inline int                  label() const                                                   { return label_; }
         inline bool                 has_sensor() const                                              { return has_sensor_; }
+        inline void                 activate(double new_battery);
+        inline void                 deactivate()                                                    { active_ = false; }
+        inline void                 read_msg(Message& msg);
 
         //Algorithm-required functions
-        inline bool                 inbox_pending()                                                  { return !inbox_.empty(); }
-        inline Message*             pop_inbox()                                                      { return inbox_.pop(); }
-        inline void                 push_outbox(Message& new_message)                                { outbox_.push(&new_message); }
-        inline std::vector<Node*>&  neighbors()                                                      { return neighbors_; }
-        inline std::vector<Node*>&  destinations()                                                   { return destinations_; }
-        inline void                 read_message()                                                  { recv_msg_count++; }
+        inline bool                 inbox_pending()                                                 { return !inbox_.empty(); }
+        inline Message*             pop_inbox()                                                     { return inbox_.pop(); }
+        inline void                 push_outbox(Message& new_message)                               { outbox_.push(&new_message); }
+        inline std::vector<Node*>&  neighbors()                                                     { return neighbors_; }
+        inline std::vector<Node*>&  destinations()                                                  { return destinations_; }
         inline void                 set_ext_data(void* ptr)                                         { ext_data_ = std::shared_ptr<void>(ptr); }
+        inline double               battery_remaining_mA() const                                    { return battery_remaining_mA_; }
 
         template<typename T> inline std::shared_ptr<T> ext_data()                                   { return std::static_pointer_cast<T>(ext_data_); }
         inline int now() const                                                                      { return num_ticks_; }
@@ -83,8 +100,9 @@ namespace DC
         std::shared_ptr<void>   ext_data_;
 
     	/* data */
-        int                 num_destinations_;
+        int                 num_destinations_{};
         int                 num_ticks_;
+        double              battery_remaining_mA_;
 
         Node* choose_destination() const;
         Message* package_sensor_data(std::string);
@@ -95,8 +113,9 @@ namespace DC
         AlgorithmBase* algo_;
     };
 
-    inline Node::Node(int label, int x, int y, bool has_sensor, bool active, AlgorithmBase& algo) :
-        label_{ label }, active_{ active }, has_sensor_{ has_sensor }, num_ticks_{ 0 }, algo_{ &algo }
+    inline Node::Node(int label, int x, int y, bool has_sensor, bool active, AlgorithmBase& algo, double battery) :
+        label_{ label }, active_{ active }, has_sensor_{ has_sensor }, num_ticks_{ 0 }, battery_remaining_mA_{battery},
+        algo_{&algo}
     {
         id_ = this;
         ed.location_ = coordinates(x, y);
@@ -104,18 +123,7 @@ namespace DC
 
     inline void Node::receive_message(Message& msg)
     {
-        auto src = msg.source();
-        auto dest = msg.destination();
-        auto hopSrc = msg.hop_source();
-        auto hopDest = msg.hop_destination();
-        if(src->label() < 1 || src->label() > 10 ||
-            dest->label() < 1 || dest->label() > 10 ||
-            hopSrc->label() < 1 || hopSrc->label() > 10 ||
-            hopDest->label() < 1 || hopDest->label() > 10
-            )
-        {
-            std::cout << "invalid" << std::endl;
-        }
+        battery_remaining_mA_ -= MSG_RECV_COST;
 
 	    inbox_.push(&msg);
     }
@@ -140,18 +148,24 @@ namespace DC
     {
         Node* recipient = msg.hop_destination();
         msg.set_hop_source(id_);
+        msg.increment_hop();
         recipient->receive_message(msg);
         sent_msg_count++;
+        battery_remaining_mA_ -= MSG_SEND_COST;
     }
 
     inline void Node::broadcast(Message& msg)
     {
-        msg.set_hop_source(this);
-        msg.set_hop_destination(nullptr);
+        msg.set_hop_source(id_);
+        msg.increment_hop();
+        //msg.set_hop_destination(nullptr); //Use this if the neighbor should know it's a broadcast
         for (Node* neighbor : neighbors_) {
-            send_message(msg);
+            Message new_msg = Message(msg);
+			new_msg.set_hop_destination(neighbor);
+            neighbor->receive_message(new_msg);
         }
         sent_msg_count++;
+        battery_remaining_mA_ -= MSG_SEND_COST;
     }
 
     inline Node* Node::choose_destination() const
@@ -171,8 +185,13 @@ namespace DC
     inline void Node::tick(bool trigger_sensor)
     {
         assert(has_sensor_ || !trigger_sensor);
+        if(!active_)
+        {
+            return; //The node is either asleep or dead; it can't do anything
+        }
 
         num_ticks_++;
+        battery_remaining_mA_ -= AWAKE_COST; //This is the cost of listening for messages
         Message* sensor_data = nullptr;
         if (trigger_sensor) {
             //This sensor node had a sensor activation
@@ -181,9 +200,16 @@ namespace DC
 
         (* algo_)(this, sensor_data);
 
+        if (battery_remaining_mA_ <= 0)
+        {
+            //The node died while receiving the message and cannot continue
+            active_ = false;
+            return;
+        }
+
         if (!outbox_.empty()) {
             Message* to_send = outbox_.pop();
-            if (to_send->destination() == nullptr) {
+            if (to_send->hop_destination() == nullptr) {
                 // This is a broadcast
                 broadcast(*to_send);
             }
@@ -200,5 +226,25 @@ namespace DC
         double result = (x_dist * x_dist) + (y_dist * y_dist);
         result = std::sqrt(result);
         return static_cast<int>(result);
+    }
+
+    inline void Node::activate(double new_battery)
+    {
+        if (new_battery != -1.0)
+        {
+            battery_remaining_mA_ = new_battery;
+        }
+
+        if (battery_remaining_mA_ <= 0)
+        {
+            active_ = true;
+        }
+    }
+
+    inline void Node::read_msg(Message& msg)
+    {
+        recv_msg_count++;
+        std::cout << "Node " << label_ << " Received this message: " << msg.contents() << std::endl; //Read the contents
+        std::cout << "Hop Count was " << msg.hop_count() << std::endl;
     }
 }

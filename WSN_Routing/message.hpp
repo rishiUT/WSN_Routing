@@ -12,8 +12,6 @@ namespace DC
 	    using string            = std::string;
 	 public:
 	    enum class MessageType{ msg, ack, heartbeat, protocol };
-	    struct Signature;
-	    using SignatureVect      = std::vector<Signature>;
 	 
 	    inline                  Message(Node* source, Node* destination, string& contents, int start_time, MessageType message_type = MessageType::msg);
 
@@ -33,6 +31,11 @@ namespace DC
 	    void                    increment_hop()                     { ++hop_count_; }
 	    int                     hop_count() const                   { return hop_count_;}
 
+		void					set_priority(bool priority)			{ priority_ = priority; }
+		bool					priority() const					{ return priority_; }
+
+		int						get_id() const						{ return id_; }
+
 	    // Algorithm specific
 		inline void set_ext_data(void* ptr) { ext_data_ = std::shared_ptr<void>(ptr); }
 		template<typename T> inline std::shared_ptr<T> ext_data()	{ return std::static_pointer_cast<T>(ext_data_); }
@@ -46,11 +49,13 @@ namespace DC
 	    Node*                   hop_source_     = nullptr;
 	    Node*                   hop_destination_= nullptr;
 	    string                  contents_;
+		int						id_ = 0;
 	    int                     hop_count_      = 0;
 	    int                     start_time_     = 0;
 	    int                     arrival_time_   = 0;
 	 
 	    bool                    arrived_        = false;
+		bool					priority_		= false;
 	    std::shared_ptr<void>   ext_data_;
 
 	    //Messages should have an ID, too, in case of duplicate messages
@@ -58,21 +63,9 @@ namespace DC
 	    //In this system, I'll probably use the message's pointer (this)
 	};
 
-	struct Message::Signature{
-	    Node*   sender_     = nullptr;
-	    int     timestamp_  = 0;
-
-	            Signature() = default;
-	            Signature(Signature const& other) = default;
-	            Signature& operator=(Signature const& other) = default;
-	            Signature(Signature&& other) = default;
-	            Signature& operator=(Signature&& other) = default;
-
-	            Signature(Node* sender, int timestamp) : sender_{ sender }, timestamp_{ timestamp }{}
-	};
-
 	inline Message::Message(Node* _source, Node* _destination, string& _contents, int start_time, MessageType _message_type) :
 	    message_type_{ _message_type }, source_{ _source }, destination_{ _destination }, contents_{ _contents }, start_time_{ start_time }
 	{
+		id_ = (int)(this);
 	}
 }

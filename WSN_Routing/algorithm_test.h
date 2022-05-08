@@ -14,11 +14,12 @@ namespace DC
 		AlgorithmTest& operator=(AlgorithmTest&& other) = default;
 
 
-		void            on_message_init(Message* msg) override {}
-		void            on_node_init(Node* msg) override {}
-		void            on_neighbor_added(Node* self, Node* neighbor) override {}
+		inline void				on_message_init(Message* msg) override {}
+		inline void				on_node_init(Node* msg) override {}
+		inline void				on_neighbor_added(Node* self, Node* neighbor) override {}
+		inline void				on_tick_end(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
 
-		inline void		operator()(Node* self, Message* sensor_data) override;
+		inline void				operator()(Node* self, Message* sensor_data) override;
 	};
 
 	inline void AlgorithmTest::operator()(Node* self, Message* sensor_data)
@@ -70,8 +71,7 @@ namespace DC
             }
             else {
                 //This is for us! Read the message, then do nothing.
-                msg->contents(); // This is where you'd normally do something with the data
-				self->read_message();
+				self->read_msg(*msg);
             }
         }
 	}

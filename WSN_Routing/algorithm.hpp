@@ -5,6 +5,24 @@
 #include <map>
 #include "algorithm_base.h"
 
+/*
+ *	NOTE:
+ *	Replace signatures with something in the Node Metadata
+ *		Create a datastructure that
+ *			Stores structs containing the "message sender" (null if we sent it), the "send time", and the "timeout time"
+ *			When elements are added, sorts them by timeout time
+ *			Allows for a peek and a pop, to check for timeouts and remove timed-out message receipts
+ *			Allows for a message check, where
+ *				an incoming message is checked against all elements
+ *				if the message is there,
+ *					Remove the message receipt from the list
+ *					return that message receipt
+ *				else return nullptr
+ *					The message must have timed out already
+ *			Note that the timeout functionality doesn't have to be used; in this situation, messages always wait in the queue, and the returning messages will always be found
+ *				If the timeout functionality is used, dead neighbors can be marked
+ */
+
 namespace DC
 {
 	class Algorithm : public AlgorithmBase{
@@ -14,8 +32,20 @@ namespace DC
 			std::map<Node*, std::map<Node*, double>> values_;
 		};
 
+		struct Signature {
+			Node* sender_ = nullptr;
+			int     timestamp_ = 0;
+
+			Signature() = default;
+			Signature(Signature const& other) = default;
+			Signature& operator=(Signature const& other) = default;
+			Signature(Signature&& other) = default;
+			Signature& operator=(Signature&& other) = default;
+
+			Signature(Node* sender, int timestamp) : sender_{ sender }, timestamp_{ timestamp }{}
+		};
+
 		struct msg_metadata {
-	        using				Signature = Message::Signature;
 	        using				SignatureVect = std::vector<Signature>;
 
 	        bool				arrived_ = false;
@@ -23,14 +53,16 @@ namespace DC
 			void				push_signature(Signature&& signature);
 			Signature			pop_signature() { Signature res = travelLog_.back(); travelLog_.pop_back(); return res; }
 			Signature			peek_signature() { return travelLog_.back(); }
-
+			int					hop_count_back_ = 0;
 		};
+
 
 		inline void				on_message_init(Message* msg) override;
 		inline void				on_node_init(Node* self) override;
 		inline void				on_neighbor_added(Node* self, Node* neighbor) override;
 
 		inline void				operator()(Node* self, Message* sensor_data) override;
+		inline void				on_tick_end(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
 	private:
 	    void					update_values(Node* self, Node* destination, Node* neighbor, int distance, int time);
 	    inline static Node*		choose_recipient(Node* self, Node* destination);
@@ -39,7 +71,6 @@ namespace DC
 	inline void Algorithm::operator()(Node* self, Message* sensor_data=nullptr) {
 		//if sensor_data != null, push it as a priority message to the outbox once the recipient is chosen
 	    if (sensor_data != nullptr) {
-	        //send_sensor_data("This is Data!");
 	        //Handle this message
 			Message* msg = sensor_data;
 			Node* dst = msg->destination();
@@ -50,7 +81,7 @@ namespace DC
 
 				msg->set_hop_source(self);
 				msg->set_hop_destination(best_n);
-				msg->ext_data<msg_metadata>()->push_signature(Message::Signature(self->id(), self->now()));
+				msg->ext_data<msg_metadata>()->push_signature(Signature(self->id(), self->now()));
 				self->push_outbox(*msg);
 			}
 	    }
@@ -62,8 +93,9 @@ namespace DC
 	            //This message needs to be forwarded
 	            if (msg->arrived()) {
 	                //This message has reached its destination and is now an acknowledgement
-	                int distance = msg->hop_count(); //This is the number of times the message was forwarded before it arrived at the destination
-					Message::Signature sig = msg->ext_data<msg_metadata>()->pop_signature();
+	                int distance = msg->ext_data<msg_metadata>()->hop_count_back_ + 1; //This is the number of times the message was forwarded before it arrived at the destination
+	                msg->ext_data<msg_metadata>()->hop_count_back_ = distance; //update the hop count
+					Signature sig = msg->ext_data<msg_metadata>()->pop_signature();
 	                int time_to_dst = msg->arrival_time() - sig.timestamp_; //This is the number of clock ticks it took to arrive
 					update_values(self, msg->destination(), msg->hop_source(), distance, time_to_dst);
 	                // Were we the sender? If not, forward it back again
@@ -76,7 +108,7 @@ namespace DC
 	            else {
 	                //We still want to get closer to the destination
 	                Node* recvr = choose_recipient(self, dst);
-					msg->ext_data<msg_metadata>()->push_signature(Message::Signature(self->id(), self->now()));
+					msg->ext_data<msg_metadata>()->push_signature(Signature(self->id(), self->now()));
 					msg->set_hop_destination(recvr);
 					self->push_outbox(*msg);
 	            }
@@ -84,14 +116,13 @@ namespace DC
 	        else {
 	            //This is for us! Read the message, then send it back so the sender knows it was received (and how long it took to get here)
 	            const auto ext_data = msg->ext_data<msg_metadata>();
-				ext_data->push_signature(Message::Signature(self->id(), self->now()));
+				ext_data->push_signature(Signature(self->id(), self->now()));
 
-	            msg->contents(); // This is where you'd normally do something with the data
-				self->read_message();
+	            self->read_msg(*msg); // This is where you'd normally do something with the data
 
 	            msg->set_arrival_time(self->now());
 
-	        	Message::Signature sig = ext_data->pop_signature();
+	        	Signature sig = ext_data->pop_signature();
 	            Node* previous = sig.sender_;
 
 	        	msg->set_hop_destination(previous);

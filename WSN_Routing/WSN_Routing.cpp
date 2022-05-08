@@ -5,13 +5,18 @@
 #include "environment.h"
 #include "algorithm_test.h"
 #include "algorithm.hpp"
+#include "algorithm_raser.h"
+#include "algorithm_pegasis.h"
+
 
 int main()
 {
     std::cout << "Hello World!\n";
-    DC::AlgorithmTest algo;
-    DC::Algorithm algo2;
-    DC::Environment env{ algo2, 10, 4 };
+    DC::AlgorithmTest test;
+    DC::Algorithm algo;
+    DC::AlgorithmRaser raser;
+    DC::AlgorithmPegasis pegasis;
+    DC::Environment env{ algo, 10, 4 };
     env.print_layout();
     env.run(100, 0);
 }

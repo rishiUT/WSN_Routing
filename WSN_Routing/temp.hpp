@@ -59,3 +59,65 @@ If there are,
     If the destination is null, it will send the message to all neighbors (broadcast)
 */
 #pragma once
+//RASER
+/*First, check if the message has already arrived;
+    if so, and the new iteration has a lower hop count than you,
+        drop both iterations
+    else
+        The other iteration has either the same hop count or a worse one. Either way, we're still forwarding it. Drop the one you just got though
+If you haven't seen it before,
+	If it has a lower hop count, or has the same hop count and isn't priority,
+		Ignore it
+	Else
+		If it has the same hop count and is priority
+			then remove the priority
+		mark it as a broadcast (hop_destination = nullptr)
+		put it in the temp outbox
+You're done with the inbox for this turn. If self.num_ticks is a multiple of your ID number - 1, it's your turn to send a message
+	if there is a message in the purgatory box,
+		pop the first message from the purgatory box to send
+	else
+		create a blank message, add your hop count, set hop destination and destination to nullptr, put that in the outbox
+		
+*/
+
+/*
+ * Notes to self:
+ * Change broadcast to send several copies of the message instead of the pointer
+ * Add a "total hop count" to each message, then increment that in both node send functions
+ */
+
+
+ /*
+  *
+  * Algorithm has
+  *      A graph object storing a graph of all nodes, where all nodes have one path leading to the leader
+  *          This is a global variable
+  *          There are actually several, one for each destination
+  *      a reset_graph function that is called by the environment on occasion (comparable to the sink node re-evaluating the map and sending it to all nodes in the graph)
+  *          Actually this is on_tick_end
+  *          This function takes in a list of nodes which all have node_lists of neighbors
+  *          For each destination:
+  *              Mark all nodes as "disconnected"
+  *              While there is a disconnected node:
+  *                  Find the node with the greatest physical distance from the destination
+  *                  For that node, see if the destination is within messaging distance
+  *                      If so, mark it as the "node to forward" for that destination
+  *                  If not, find the closest disconnected node
+  *                      then mark them as the "node to forward" for that destination
+  *                      And repeat the "find connection" algorithm for that node
+  *                  If there isn't a disconnected node within reach:
+  *                      Find the nearest connected node and mark mark as the "node to forward" for that destination
+  *
+  *      On node init
+  *          Add node_metadata
+  *          Run the "find nearest disconnected? neighbor" function used in the algorithm reset call
+  *      on message init
+  *          nothing
+  *      on neighbor added
+  *          Nothing
+  *      operator()
+  *          Get the nearest neighbor for the necessary destination, then forward them the packet
+  *
+  *
+  */

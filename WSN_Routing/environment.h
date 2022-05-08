@@ -2,7 +2,6 @@
 #include<vector>
 #include<iostream>
 #include "node.hpp"
-//#include "message.hpp"
 #include "algorithm_base.h"
 
 namespace DC
@@ -35,7 +34,7 @@ namespace DC
 			bool has_sensor = (i >= actuator_count);
 			bool is_active = true;
 
-			NodeUnqPtr node = std::make_unique<Node>(i + 1, x, y, has_sensor, is_active, *algorithm_);
+			NodeUnqPtr node = std::make_unique<Node>(i + 1, x, y, has_sensor, is_active, *algorithm_, MSG_SEND_COST * 1000);
 			nodes_.push_back(std::move(node));
 
 			algorithm_->on_node_init(nodes_[i].get());
@@ -76,6 +75,12 @@ namespace DC
 	{
 		for (int i = 0; i < loop_count; i++)
 		{
+			std::vector<Node*> node_list;
+			for (auto& node : nodes_)
+			{
+				node_list.push_back(&(*node));
+			}
+			algorithm_->on_tick_end(node_list, node_list.back()->destinations());
 			for (auto& node : nodes_)
 			{
 				int val = std::rand();
@@ -88,6 +93,12 @@ namespace DC
 		{
 			std::cout << "Node " << node->label() << ": sent messages = " << node->sent_msg_count << ", received messages = " << node->recv_msg_count <<"\n";
 		}
+		// For each node, number of sent messages, number of received messages, and number of destination messages (messages that the node was the destination for)
+		// Have the node return a list of all destination messages
+			// For each message, the hop count and the number of timesteps it took to arrive (received_time - sent_time)
+		// Calculations:
+			// Using the sent and received message counts, calculate the number/percentage of lost messages
+			// Calculate the average hop count and the average number of timesteps for the messages, then sort the messages by the times they were sent
 
 	}
 
