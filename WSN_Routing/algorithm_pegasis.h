@@ -23,12 +23,12 @@ namespace DC
         AlgorithmPegasis(AlgorithmPegasis&& other) = default;
         AlgorithmPegasis& operator=(AlgorithmPegasis&& other) = default;
 
-        inline void             on_message_init(Message* msg) override;
+        inline void             on_message_init(MessagePtr msg) override;
         inline void             on_node_init(Node* msg) override;
 	    inline void             on_neighbor_added(Node* self, Node* neighbor) override {}
-        inline void				on_tick_end(std::vector<Node*> nodes, std::vector<Node*> destinations) override;
+        inline void				on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override;
 
-        inline void             operator()(Node* self, Message* sensor_data) override;
+        inline void             operator()(Node* self, MessagePtr sensor_data) override;
 
     private:
         bool has_disconnected_node(std::vector<Node*> nodes);
@@ -37,9 +37,11 @@ namespace DC
         bool has_node(std::vector<Node*> node_list, Node* node);
         inline void find_forwarding_node(Node* node, Node* dest);
 
+        int breakCounter_ = 0;
+
     };
 
-    inline void AlgorithmPegasis::on_message_init(Message* msg)
+    inline void AlgorithmPegasis::on_message_init(MessagePtr msg)
     {
         auto ext_data = new msg_metadata();
         msg->set_ext_data(ext_data);
@@ -71,12 +73,15 @@ namespace DC
     inline auto AlgorithmPegasis::get_furthest_node(std::vector<Node*> nodes, Node* destination, bool needs_disconnected)
     {
         //Gets the furthest disconnected node from the current destination
-        auto curr_node = nodes.begin();
         Node* best_node = nullptr;
-        int best_distance = curr_node.operator*()->distance_to(*destination);
+        int best_distance = 0;
 
-        for (; curr_node != nodes.end(); ++curr_node)
+        for (auto curr_node = nodes.begin(); curr_node != nodes.end(); ++curr_node)
         {
+            auto&& nodeMetadata = *(*curr_node)->ext_data<node_metadata>();
+            auto disconnected = (*curr_node)->ext_data<node_metadata>()->disconnected;
+            auto distance = curr_node.operator*()->distance_to(*destination);
+
 	        if (((*curr_node)->ext_data<node_metadata>()->disconnected || !needs_disconnected) && curr_node.operator*()->distance_to(*destination) > best_distance)
 	        {
                 best_node = *curr_node;
@@ -90,20 +95,23 @@ namespace DC
     inline auto AlgorithmPegasis::get_closest_node(std::vector<Node*> nodes, Node* destination, bool needs_disconnected)
     {
         //Gets the furthest disconnected node from the current destination
-        auto curr_node = nodes.begin();
-        auto best_node = curr_node;
-        int best_distance = curr_node.operator*()->distance_to(*destination);
+        Node* best_node = nullptr;
+        int best_distance = INT_MAX;
 
-        for (curr_node; curr_node != nodes.end(); ++curr_node)
+        for (auto curr_node = nodes.begin(); curr_node != nodes.end(); ++curr_node)
         {
+            auto&& nodeMetadata = *(*curr_node)->ext_data<node_metadata>();
+            auto disconnected = (*curr_node)->ext_data<node_metadata>()->disconnected;
+            auto distance = curr_node.operator*()->distance_to(*destination);
+
             if (((*curr_node)->ext_data<node_metadata>()->disconnected || !needs_disconnected) && curr_node.operator*()->distance_to(*destination) < best_distance)
             {
-                best_node = curr_node;
+                best_node = *curr_node;
                 best_distance = (*curr_node)->distance_to(*destination);
             }
         }
 
-        return *best_node;
+        return best_node;
     }
 
     bool AlgorithmPegasis::has_node(std::vector<Node*> node_list, Node* node)
@@ -139,30 +147,75 @@ namespace DC
         node->ext_data<node_metadata>()->nearest_neighbors[&(*dest)] = best_option;
     }
 
-    inline void AlgorithmPegasis::on_tick_end(std::vector<Node*> nodes, std::vector<Node*> destinations)
+    inline void AlgorithmPegasis::on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations)
     {
-        for (auto dest = destinations.begin(); dest != destinations.end(); ++dest)
+        if (breakCounter_ % 10 == 0)
         {
-	        for (auto node = nodes.begin(); node != nodes.end(); ++node)
+	        for (auto dest = destinations.begin(); dest != destinations.end(); ++dest)
 	        {
-                if ((*node)->id() != (*dest)->id())
-                {
-					(*node)->ext_data<node_metadata>()->disconnected = true;
-                }
+		        for (auto node = nodes.begin(); node != nodes.end(); ++node)
+		        {
+	                (*node)->ext_data<node_metadata>()->disconnected = ((*node)->id() != (*dest)->id());
+		        }
+
+	            while (has_disconnected_node(nodes))
+	            {
+	                Node* destNode = *dest;
+	                auto furthest_node = get_furthest_node(nodes, destNode);
+	                find_forwarding_node(furthest_node, *dest);
+	            }
 	        }
 
-            while (has_disconnected_node(nodes))
+            for (auto& node : nodes)
             {
-                auto furthest_node = get_furthest_node(nodes, *dest);
-                find_forwarding_node(furthest_node, *dest);
+                //A broadcast from every node simulates flooding, which is used to determine which nodes are still alive
+                std::string txt = "I'm Alive";
+                MessagePtr msg{ new Message(node, nullptr, txt, breakCounter_) };
+                node->broadcast(msg);
             }
         }
+        breakCounter_++;
     }
 
 
-    inline void AlgorithmPegasis::operator()(Node* self, Message* sensor_data)
+    inline void AlgorithmPegasis::operator()(Node* self, MessagePtr sensor_data)
     {
+        if (sensor_data != nullptr) {
+            //send_sensor_data("This is Data!");
+            //Handle this message
+            MessagePtr msg = sensor_data;
+            Node* dst = msg->destination();
+            if (dst != nullptr) {
+                //This message needs to be forwarded
+                //Find the neighbor most likely to be closest to the destination
+                Node* best_n = self->ext_data<node_metadata>()->nearest_neighbors[dst];
 
+                msg->set_hop_source(self);
+                msg->set_hop_destination(best_n);
+                self->push_outbox(msg);
+            }
+        }
+        else if (self->inbox_pending()) {
+            MessagePtr msg = self->pop_inbox();
+            Node* dst = msg->destination();
+            if (dst != nullptr && dst->label() != self->label()) {
+                if (self->label() == 1)
+                {
+                    std::cout << dst->label() << "\n";
+                }
+                //This message needs to be forwarded
+                //Find the neighbor most likely to be closest to the destination
+                Node* best_n = self->ext_data<node_metadata>()->nearest_neighbors[dst];
+
+                msg->set_hop_source(self);
+                msg->set_hop_destination(best_n);
+                self->push_outbox(msg);
+            }
+            else {
+                //This is for us! If it isn't an alive message, read the message, then do nothing.
+                if (dst != nullptr) { self->read_msg(msg); }
+            }
+        }
     }
 }
 
@@ -172,7 +225,7 @@ namespace DC
  *
  * Algorithm has
  *      a reset_graph function that is called by the environment on occasion (comparable to the sink node re-evaluating the map and sending it to all nodes in the graph)
- *          Actually this is on_tick_end
+ *          Actually this is on_tick
  *          This function takes in a list of nodes which all have node_lists of neighbors
  *          For each destination:
  *              Mark all nodes as "disconnected"

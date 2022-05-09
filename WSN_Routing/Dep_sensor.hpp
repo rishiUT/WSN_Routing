@@ -11,7 +11,7 @@ private:
 public:
     SensorNode(std::vector<Node*>, int, int);
     void add_neighbor(Node*);
-    void forward_data(Node*, Message*);
+    void forward_data(Node*, MessagePtr);
     void send_sensor_data(std::string);
     void update_values(Node*, Node*, int, int);
     void tick();
@@ -57,7 +57,7 @@ void SensorNode::tick() {
         inbox_msg current = inbox_.front();
         inbox_.pop();
         add_neighbor(current.sender);
-        Message* msg = current.message;
+        MessagePtr msg = current.message;
         Node* dst = msg->destination();
         if (dst != NULL) {
             //This message needs to be forwarded
@@ -89,7 +89,7 @@ void SensorNode::tick() {
 void SensorNode::send_sensor_data(std::string data)
 {
     Node* destination = choose_destination();
-    Message* msg = new Message(id_, destination, data, num_ticks_);
+    MessagePtr msg = new Message(id_, destination, data, num_ticks_);
     forward_data(destination, msg);
 }
 
@@ -104,7 +104,7 @@ Node* SensorNode::choose_neighbor(Node* destination) {
     return NULL;
 }
 
-void SensorNode::forward_data(Node* destination, Message* msg) {
+void SensorNode::forward_data(Node* destination, MessagePtr msg) {
     Node* intermediary = choose_neighbor(destination);
     msg->add_signature(id_, num_ticks_);
     send_message(msg, intermediary);

@@ -121,3 +121,42 @@ You're done with the inbox for this turn. If self.num_ticks is a multiple of you
   *
   *
   */
+
+/*
+ *  TODO:
+ *  Add randomization for destinations - done
+ *  Pegasis:
+ *      Complete! I think
+ *  RASeR:
+ *      Complete! Probably
+ *  My Algorithm:
+ *      Add some randomness to the best_path picker - done
+ *      Eventually refactor the signatures out of the nodes
+ *
+ *  Add more functions to get the data-collecting information out of the nodes and messages
+ *  Add functions to handle the data, then to print it to a file
+ *      Print to CSV, so I can do excel stuff and maybe python stuff
+ *
+ *  Make sure all the agents are checking if their neighbors are still active
+ *      Active list?
+ *      Add a physical neighbor list to the node class which is exclusively updated by the environment
+ *
+ *
+ *  Make sure the environment is taking inactive neighbors off the neighbor lists
+ *      RASeR doesn't know anything about the neighbors, it only uses broadcasts
+ *      PEGASIS is receiving updated neighbors lists from the environment, which equates to the reverse flooding to determine who is alive
+ *      My algorithm does not update the neighbor lists or handle failures... yet
+ */
+
+/*
+ *  Print Messages
+ *      Add a message print function
+ *          Prints the ID, the hop count, the start time, and the end time
+ *      Add an algorithm-specific on_message_print
+ *          Print the message metadata, whatever that looks like
+ *
+ *  Unrandomize the nodes
+ *  Add congestion by changing node message frequencies
+ *
+ *
+ */

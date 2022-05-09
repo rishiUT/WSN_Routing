@@ -53,6 +53,8 @@ namespace DC
 	    int                     hop_count_      = 0;
 	    int                     start_time_     = 0;
 	    int                     arrival_time_   = 0;
+		static int				ID_COUNTER;
+		int						label			= 0;
 	 
 	    bool                    arrived_        = false;
 		bool					priority_		= false;
@@ -63,9 +65,14 @@ namespace DC
 	    //In this system, I'll probably use the message's pointer (this)
 	};
 
+	using MessagePtr = std::shared_ptr<Message>;
+
+	int Message::ID_COUNTER = 0;
+
 	inline Message::Message(Node* _source, Node* _destination, string& _contents, int start_time, MessageType _message_type) :
 	    message_type_{ _message_type }, source_{ _source }, destination_{ _destination }, contents_{ _contents }, start_time_{ start_time }
 	{
 		id_ = (int)(this);
+		label = ID_COUNTER++;
 	}
 }

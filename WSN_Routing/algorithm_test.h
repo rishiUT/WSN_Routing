@@ -14,20 +14,20 @@ namespace DC
 		AlgorithmTest& operator=(AlgorithmTest&& other) = default;
 
 
-		inline void				on_message_init(Message* msg) override {}
+		inline void				on_message_init(MessagePtr msg) override {}
 		inline void				on_node_init(Node* msg) override {}
 		inline void				on_neighbor_added(Node* self, Node* neighbor) override {}
-		inline void				on_tick_end(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
+		inline void				on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
 
-		inline void				operator()(Node* self, Message* sensor_data) override;
+		inline void				operator()(Node* self, MessagePtr sensor_data) override;
 	};
 
-	inline void AlgorithmTest::operator()(Node* self, Message* sensor_data)
+	inline void AlgorithmTest::operator()(Node* self, MessagePtr sensor_data)
 	{
         if (sensor_data != nullptr) {
             //send_sensor_data("This is Data!");
             //Handle this message
-			Message* msg = sensor_data;
+			MessagePtr msg = sensor_data;
 			Node* dst = msg->destination();
 			if (dst != nullptr) {
 				//This message needs to be forwarded
@@ -43,11 +43,11 @@ namespace DC
 
 				msg->set_hop_source(self);
 				msg->set_hop_destination(best_n);
-				self->push_outbox(*msg);
+				self->push_outbox(msg);
 			}
         }
         else if (self->inbox_pending()) {
-            Message* msg = self->pop_inbox();
+            MessagePtr msg = self->pop_inbox();
             Node* dst = msg->destination();
             if (dst != nullptr && dst->label() != self->label()) {
 				if (self->label() == 1)
@@ -67,11 +67,11 @@ namespace DC
 
 				msg->set_hop_source(self);
 				msg->set_hop_destination(best_n);
-				self->push_outbox(*msg);
+				self->push_outbox(msg);
             }
             else {
                 //This is for us! Read the message, then do nothing.
-				self->read_msg(*msg);
+				self->read_msg(msg);
             }
         }
 	}

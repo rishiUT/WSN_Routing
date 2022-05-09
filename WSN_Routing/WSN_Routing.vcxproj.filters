@@ -32,7 +32,7 @@
     <ClInclude Include="node.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="sensor.hpp">
+    <ClInclude Include="Dep_sensor.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="algorithm.hpp">
@@ -54,6 +54,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="algorithm_pegasis.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="msg_pending_list.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

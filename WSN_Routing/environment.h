@@ -8,16 +8,19 @@ namespace DC
 {
 	class Environment
 	{
-		static constexpr int comm_range = 15;
+		static constexpr int comm_range = 10;
 		using NodeUnqPtr		= std::unique_ptr<Node>;
 		using NodeVector		= std::vector<NodeUnqPtr>;
 	public:
-		inline						Environment(AlgorithmBase& algorithm, int node_count, int actuator_count);
+		inline					Environment(AlgorithmBase& algorithm, int node_count, int actuator_count);
 		void					run(int loop_count, int message_count);
 		void					print_layout();
 	private:
 		AlgorithmBase*			algorithm_;
 		NodeVector				nodes_;
+		std::vector<Node*>				destinations_;
+
+		bool					partitioned();
 	};
 
 	inline Environment::Environment(AlgorithmBase& algorithm, int node_count, int actuator_count):
@@ -53,6 +56,10 @@ namespace DC
 				nodes_[i]->add_destination(*nodes_[act_ndx]);
 			}
 		}
+		for (int act_ndx = 0; act_ndx < actuator_count; ++act_ndx)
+		{
+			destinations_.push_back(&(*nodes_[act_ndx]));
+		}
 		for(auto& srcNode : nodes_)
 		{
 			int const label = srcNode->label();
@@ -71,6 +78,8 @@ namespace DC
 
 	}
 
+
+
 	inline void Environment::run(int loop_count, int message_count)
 	{
 		for (int i = 0; i < loop_count; i++)
@@ -78,9 +87,12 @@ namespace DC
 			std::vector<Node*> node_list;
 			for (auto& node : nodes_)
 			{
-				node_list.push_back(&(*node));
+				if (node->active_)
+				{
+					node_list.push_back(&(*node));
+				}
 			}
-			algorithm_->on_tick_end(node_list, node_list.back()->destinations());
+			algorithm_->on_tick(node_list, node_list.back()->destinations());
 			for (auto& node : nodes_)
 			{
 				int val = std::rand();
@@ -91,7 +103,8 @@ namespace DC
 		}
 		for (auto& node : nodes_)
 		{
-			std::cout << "Node " << node->label() << ": sent messages = " << node->sent_msg_count << ", received messages = " << node->recv_msg_count <<"\n";
+			std::cout << "Node " << node->label() << ": sent messages = " << node->sent_msg_count << ", received messages = " << node->inbox_msg_count << 
+				", generated messages = " << node->generated_msg_count_ << ", destination messages = " << node->recv_msg_count << std::endl;
 		}
 		// For each node, number of sent messages, number of received messages, and number of destination messages (messages that the node was the destination for)
 		// Have the node return a list of all destination messages
@@ -140,5 +153,26 @@ namespace DC
 			}
 			std::cout << std::endl;
 		}
+	}
+
+	inline bool can_reach(Node* node, Node* destination)
+	{
+		//TODO: Edit this
+		return true;
+	}
+
+	inline bool Environment::partitioned()
+	{
+		 for (auto& dest : destinations_)
+		 {
+			 for (auto& node: nodes_)
+			 {
+				 if (!can_reach(&( *node), dest))
+				 {
+					 return true;
+				 }
+			 }
+		 }
+		 return false;
 	}
 }

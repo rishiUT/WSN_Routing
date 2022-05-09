@@ -7,24 +7,24 @@ namespace DC
 	{
 	public:
 		MessageQueue();
-		void push(Message* msg);
-		void priority_push(Message* msg);
-		Message* pop();
+		void push(MessagePtr msg);
+		void priority_push(MessagePtr msg);
+		MessagePtr pop();
 		bool empty();
-		bool contains(Message* msg);
-		bool remove(Message* msg);
+		bool contains(MessagePtr msg);
+		bool remove(MessagePtr msg);
 	private:
-		std::deque<Message*> msgs;
+		std::deque<MessagePtr> msgs;
 	};
 
 	MessageQueue::MessageQueue() {
 	}
 
-	void MessageQueue::push(Message* msg) {
+	void MessageQueue::push(MessagePtr msg) {
 		msgs.push_back(msg);
 	}
 
-	void MessageQueue::priority_push(Message* msg) {
+	void MessageQueue::priority_push(MessagePtr msg) {
 		//msg->set_priority(true); //If this message doesn't already have priority, it better have priority now
 		assert(msg->priority());
 		auto it = msgs.cbegin();
@@ -45,9 +45,9 @@ namespace DC
 		}
 	}
 
-	Message* MessageQueue::pop() {
+	MessagePtr MessageQueue::pop() {
 		_ASSERT(!empty());
-		Message* val = msgs.front();
+		MessagePtr val = msgs.front();
 		msgs.pop_front();
 		return val;
 	}
@@ -56,7 +56,7 @@ namespace DC
 		return msgs.empty();
 	}
 
-	inline bool MessageQueue::contains(Message* msg)
+	inline bool MessageQueue::contains(MessagePtr msg)
 	{
 		auto it = msgs.cbegin();
 		while (it != msgs.end() && (*it)->get_id() != msg->get_id())
@@ -72,7 +72,7 @@ namespace DC
 		return false;
 	}
 
-	inline bool MessageQueue::remove(Message* msg)
+	inline bool MessageQueue::remove(MessagePtr msg)
 	{
 		//Removes the messaage if it is in the queue
 		//Returns true if the message was there, false otherwise

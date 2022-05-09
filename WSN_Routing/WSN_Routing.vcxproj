@@ -151,8 +151,9 @@
     <ClInclude Include="environment.h" />
     <ClInclude Include="message.hpp" />
     <ClInclude Include="message_queue.hpp" />
+    <ClInclude Include="msg_pending_list.h" />
     <ClInclude Include="node.hpp" />
-    <ClInclude Include="sensor.hpp" />
+    <ClInclude Include="Dep_sensor.hpp" />
     <ClInclude Include="temp.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include "algorithm_base.h"
+#include <cassert>
 
 /*
  *	NOTE:
@@ -57,22 +58,22 @@ namespace DC
 		};
 
 
-		inline void				on_message_init(Message* msg) override;
+		inline void				on_message_init(MessagePtr msg) override;
 		inline void				on_node_init(Node* self) override;
 		inline void				on_neighbor_added(Node* self, Node* neighbor) override;
 
-		inline void				operator()(Node* self, Message* sensor_data) override;
-		inline void				on_tick_end(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
+		inline void				operator()(Node* self, MessagePtr sensor_data) override;
+		inline void				on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
 	private:
 	    void					update_values(Node* self, Node* destination, Node* neighbor, int distance, int time);
 	    inline static Node*		choose_recipient(Node* self, Node* destination);
 	};
 
-	inline void Algorithm::operator()(Node* self, Message* sensor_data=nullptr) {
+	inline void Algorithm::operator()(Node* self, MessagePtr sensor_data=nullptr) {
 		//if sensor_data != null, push it as a priority message to the outbox once the recipient is chosen
 	    if (sensor_data != nullptr) {
 	        //Handle this message
-			Message* msg = sensor_data;
+			MessagePtr msg = sensor_data;
 			Node* dst = msg->destination();
 			if (dst != nullptr) {
 				//This message needs to be forwarded
@@ -82,11 +83,11 @@ namespace DC
 				msg->set_hop_source(self);
 				msg->set_hop_destination(best_n);
 				msg->ext_data<msg_metadata>()->push_signature(Signature(self->id(), self->now()));
-				self->push_outbox(*msg);
+				self->push_outbox(msg);
 			}
 	    }
 	    else if (self->inbox_pending()) {
-	        Message* msg = self->pop_inbox();
+	        MessagePtr msg = self->pop_inbox();
 	        self->add_neighbor(*(msg->hop_source()));
 	        Node* dst = msg->destination();
 	        if (dst != nullptr && dst != self->id()) {
@@ -102,7 +103,7 @@ namespace DC
 	                if (msg->source() != self->id()) {
 	                    Node* previous = msg->ext_data<msg_metadata>()->peek_signature().sender_;
 						msg->set_hop_destination(previous);
-	                    self->push_outbox(*msg);
+	                    self->push_outbox(msg);
 	                }
 	            }
 	            else {
@@ -110,7 +111,7 @@ namespace DC
 	                Node* recvr = choose_recipient(self, dst);
 					msg->ext_data<msg_metadata>()->push_signature(Signature(self->id(), self->now()));
 					msg->set_hop_destination(recvr);
-					self->push_outbox(*msg);
+					self->push_outbox(msg);
 	            }
 	        }
 	        else {
@@ -118,7 +119,7 @@ namespace DC
 	            const auto ext_data = msg->ext_data<msg_metadata>();
 				ext_data->push_signature(Signature(self->id(), self->now()));
 
-	            self->read_msg(*msg); // This is where you'd normally do something with the data
+	            self->read_msg(msg); // This is where you'd normally do something with the data
 
 	            msg->set_arrival_time(self->now());
 
@@ -126,17 +127,18 @@ namespace DC
 	            Node* previous = sig.sender_;
 
 	        	msg->set_hop_destination(previous);
-				self->push_outbox(*msg);
+				self->push_outbox(msg);
 	        }
 	    }
 	}
 
 	inline void Algorithm::update_values(Node* self, Node* destination, Node* neighbor, int distance, int time)
 	{
-		const double update_val = -1 * (distance + time);
 		const auto ext_data = self->ext_data<node_metadata>();
-
 		std::map<Node*, double> paths = ext_data->values_[destination];
+		paths[neighbor] += 10; //Undo the value edit we made when the message was sent
+
+		const double update_val = -1 * (distance + time);
 		const double prev_val = paths[neighbor];
 		paths[neighbor] = (prev_val * 0.9) + (update_val * 0.1); //Make a minor update to the expected value
 	}
@@ -144,12 +146,23 @@ namespace DC
 	inline Node* Algorithm::choose_recipient(Node* self, Node* destination) {
 		const auto ext_data = self->ext_data<node_metadata>();
 
-		const std::map<Node*, double> dest_paths = ext_data->values_[destination];
+		assert(self->neighbors().size() != 0);
+
+		//If one of your neighbors is the destination, send the message to that neighbor
+		for (auto& neighbor : self->neighbors())
+		{
+			if (neighbor->label() == destination->label())
+			{
+				return neighbor;
+			}
+		}
+
+		std::map<Node*, double> dest_paths = ext_data->values_[destination];
 		Node* best_path = nullptr;
-		double best_val = 0;
+		double best_val = 1;
 		for (auto&& n : dest_paths)
 		{
-			if (best_val == 0 || n.second > best_val)
+			if (best_val == 1 || n.second > best_val)
 			{
 				best_val = n.second;
 				best_path = n.first;
@@ -157,6 +170,15 @@ namespace DC
 		}
 		bool explore = false; //Make this random; if it's true, we'll take an alternate path to see if it's better
 								//We might also need to take the best path to make sure the message arrives though
+		if (explore)
+		{
+			//TODO: best_path = random neighbor
+			int val = std::rand();
+			val %= self->neighbors().size();
+			best_path = self->neighbors()[val];
+		}
+
+		dest_paths[best_path] -= 10; // Mildly discourage the use of this path until it returns, to prevent overfilling and in case the node went down
 		return best_path;
 	}
 
@@ -165,7 +187,7 @@ namespace DC
 		travelLog_.push_back(signature);
 	}
 
-	inline void Algorithm::on_message_init(Message* msg)
+	inline void Algorithm::on_message_init(MessagePtr msg)
 	{
 		auto ext_data = new msg_metadata();
 		msg->set_ext_data(ext_data);
@@ -192,7 +214,7 @@ namespace DC
 		const auto ext_data = self->ext_data<node_metadata>();
 		for (Node* d : self->destinations())
 		{
-			ext_data->values_[d][neighbor] = -1; //-1 = "no value known, no route found, etc."
+			ext_data->values_[d][neighbor] = 0; //-1 = "no value known, no route found, etc."
 		}
 	}
 }

@@ -20,10 +20,10 @@ namespace DC
 {
 
     struct inbox_msg {
-        Message* message;
+        MessagePtr message;
         Node* sender;
 
-        inbox_msg(Message* msg, Node* sndr) {
+        inbox_msg(MessagePtr msg, Node* sndr) {
             sender = sndr;
             message = msg;
         }
@@ -58,27 +58,28 @@ namespace DC
         inline Node&                operator=(Node&& other) = delete;
 
 
-        inline void                 receive_message(Message& msg);
+        inline void                 receive_message(MessagePtr msg);
 		inline void                 add_destination(Node& destination);
         inline void                 add_neighbor(Node& neighbor);
-        inline void                 send_message(Message& msg);
-        inline void                 broadcast(Message& msg);
+        inline void                 send_message(MessagePtr msg);
+        inline void                 broadcast(MessagePtr msg);
         inline void                 tick(bool trigger_sensor);
         inline int                  distance_to(Node& other) const;
         inline int                  label() const                                                   { return label_; }
         inline bool                 has_sensor() const                                              { return has_sensor_; }
         inline void                 activate(double new_battery);
         inline void                 deactivate()                                                    { active_ = false; }
-        inline void                 read_msg(Message& msg);
+        inline void                 read_msg(MessagePtr msg);
 
         //Algorithm-required functions
         inline bool                 inbox_pending()                                                 { return !inbox_.empty(); }
-        inline Message*             pop_inbox()                                                     { return inbox_.pop(); }
-        inline void                 push_outbox(Message& new_message)                               { outbox_.push(&new_message); }
+        inline MessagePtr           pop_inbox()                                                     { return inbox_.pop(); }
+        inline void                 push_outbox(MessagePtr new_message)                             { outbox_.push(new_message); }
         inline std::vector<Node*>&  neighbors()                                                     { return neighbors_; }
         inline std::vector<Node*>&  destinations()                                                  { return destinations_; }
         inline void                 set_ext_data(void* ptr)                                         { ext_data_ = std::shared_ptr<void>(ptr); }
         inline double               battery_remaining_mA() const                                    { return battery_remaining_mA_; }
+        inline MessageQueue&        archive()                                                       { return archive_; }
 
         template<typename T> inline std::shared_ptr<T> ext_data()                                   { return std::static_pointer_cast<T>(ext_data_); }
         inline int now() const                                                                      { return num_ticks_; }
@@ -88,9 +89,11 @@ namespace DC
         friend class        Environment;
 
         std::vector<Node*>  neighbors_;
+        std::vector<Node*>  phys_neighbors_;
         std::vector<Node*>  destinations_;
         MessageQueue        inbox_;
         MessageQueue        outbox_;
+        MessageQueue        archive_; // Stores messages for which this node was the destination
         Node*               id_;
         int                 label_ = 0;
 
@@ -103,12 +106,16 @@ namespace DC
         int                 num_destinations_{};
         int                 num_ticks_;
         double              battery_remaining_mA_;
+        double              battery_used_mA_ = 0;
+        double              battery_max_mA_;
 
         Node* choose_destination() const;
-        Message* package_sensor_data(std::string);
+        MessagePtr package_sensor_data(std::string);
 
         int sent_msg_count = 0;
         int recv_msg_count = 0;
+        int inbox_msg_count = 0;
+        int generated_msg_count_ = 0;
 
         AlgorithmBase* algo_;
     };
@@ -119,13 +126,15 @@ namespace DC
     {
         id_ = this;
         ed.location_ = coordinates(x, y);
+        battery_max_mA_ = battery_remaining_mA();
     }
 
-    inline void Node::receive_message(Message& msg)
+    inline void Node::receive_message(MessagePtr msg)
     {
         battery_remaining_mA_ -= MSG_RECV_COST;
-
-	    inbox_.push(&msg);
+        battery_used_mA_ += MSG_RECV_COST;
+        inbox_msg_count++;
+	    inbox_.push(msg);
     }
 
     inline void Node::add_destination(Node& destination)
@@ -144,41 +153,45 @@ namespace DC
         algo_->on_neighbor_added(this, &neighbor);
     }
 
-    inline void Node::send_message(Message& msg)
+    inline void Node::send_message(MessagePtr msg)
     {
-        Node* recipient = msg.hop_destination();
-        msg.set_hop_source(id_);
-        msg.increment_hop();
+        Node* recipient = msg->hop_destination();
+        msg->set_hop_source(id_);
+        msg->increment_hop();
         recipient->receive_message(msg);
         sent_msg_count++;
         battery_remaining_mA_ -= MSG_SEND_COST;
+        battery_used_mA_ += MSG_SEND_COST;
     }
 
-    inline void Node::broadcast(Message& msg)
+    inline void Node::broadcast(MessagePtr msg)
     {
-        msg.set_hop_source(id_);
-        msg.increment_hop();
+        msg->set_hop_source(id_);
+        msg->increment_hop();
         //msg.set_hop_destination(nullptr); //Use this if the neighbor should know it's a broadcast
         for (Node* neighbor : neighbors_) {
-            Message new_msg = Message(msg);
-			new_msg.set_hop_destination(neighbor);
+            MessagePtr new_msg{ new Message(*msg) };
+			new_msg->set_hop_destination(neighbor);
             neighbor->receive_message(new_msg);
         }
         sent_msg_count++;
         battery_remaining_mA_ -= MSG_SEND_COST;
+        battery_used_mA_ += MSG_RECV_COST;
     }
 
     inline Node* Node::choose_destination() const
     {
-        //Make this random
-        return destinations_[0];
+        int val = std::rand();
+        val %= destinations_.size();
+        return destinations_[val];
     }
 
-    inline Message* Node::package_sensor_data(std::string data)
+    inline MessagePtr Node::package_sensor_data(std::string data)
     {
         Node* destination = choose_destination();
-        const auto msg = new Message(this, destination, data, num_ticks_);
+        MessagePtr msg{ new Message(this, destination, data, num_ticks_) };
         algo_->on_message_init(msg);
+        generated_msg_count_++;
         return msg;
     }
 
@@ -192,7 +205,8 @@ namespace DC
 
         num_ticks_++;
         battery_remaining_mA_ -= AWAKE_COST; //This is the cost of listening for messages
-        Message* sensor_data = nullptr;
+        battery_used_mA_ += AWAKE_COST;
+        MessagePtr sensor_data = nullptr;
         if (trigger_sensor) {
             //This sensor node had a sensor activation
             sensor_data = package_sensor_data("This is data! Very Important");
@@ -200,22 +214,24 @@ namespace DC
 
         (* algo_)(this, sensor_data);
 
+        /*
         if (battery_remaining_mA_ <= 0)
         {
             //The node died while receiving the message and cannot continue
             active_ = false;
             return;
         }
+        */
 
         if (!outbox_.empty()) {
-            Message* to_send = outbox_.pop();
+            MessagePtr to_send = outbox_.pop();
             if (to_send->hop_destination() == nullptr) {
                 // This is a broadcast
-                broadcast(*to_send);
+                broadcast(to_send);
             }
             else {
                 //Assumption; if it's in the outbox, the algorithm has already provided a recipient
-                send_message(*to_send);
+                send_message(to_send);
             }
         }
     }
@@ -233,6 +249,7 @@ namespace DC
         if (new_battery != -1.0)
         {
             battery_remaining_mA_ = new_battery;
+            battery_max_mA_ = new_battery;
         }
 
         if (battery_remaining_mA_ <= 0)
@@ -241,10 +258,11 @@ namespace DC
         }
     }
 
-    inline void Node::read_msg(Message& msg)
+    inline void Node::read_msg(MessagePtr msg)
     {
         recv_msg_count++;
-        std::cout << "Node " << label_ << " Received this message: " << msg.contents() << std::endl; //Read the contents
-        std::cout << "Hop Count was " << msg.hop_count() << std::endl;
+        archive_.push(msg);
+        std::cout << "Node " << label_ << " Received this message: " << msg->contents() << std::endl; //Read the contents
+        std::cout << "Hop Count was " << msg->hop_count() << std::endl;
     }
 }

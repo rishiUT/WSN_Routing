@@ -18,7 +18,7 @@ int main()
     DC::AlgorithmPegasis pegasis;
     DC::Environment env{ algo, 10, 4 };
     env.print_layout();
-    env.run(100, 0);
+    env.run(10, 0);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
