@@ -25,7 +25,7 @@ namespace DC
 	    string                  contents() const                    { return contents_;}
 
 	    void                    set_arrival_time(int arrival_time)  { arrival_time_ = arrival_time; }
-	    int                     travel_time() const                 { return arrival_time_ - start_time_;}
+	    int                     travel_time() const                 { return arrival_time_ ? arrival_time_ - start_time_ : 0;}
 		int                     arrival_time() const				{ return arrival_time_; }
 
 	    void                    increment_hop()                     { ++hop_count_; }
@@ -36,11 +36,17 @@ namespace DC
 
 		int						get_id() const						{ return id_; }
 
+		int						label() const						{ return label_; }
+		int						envelope_label() const				{ return envelope_label_; }
+		int						start_time() const					{ return start_time_; }
+
+		void					set_hop_timestamp(int hop_timestamp) { hop_timestamp_ = hop_timestamp; }
+		int						hop_timestamp()						{ return hop_timestamp_; }
+
 	    // Algorithm specific
 		inline void set_ext_data(void* ptr) { ext_data_ = std::shared_ptr<void>(ptr); }
 		template<typename T> inline std::shared_ptr<T> ext_data()	{ return std::static_pointer_cast<T>(ext_data_); }
 
-	    bool                    arrived() const                     { return arrived_; }
 
 	private:
 	    MessageType             message_type_   = MessageType::msg;
@@ -53,10 +59,11 @@ namespace DC
 	    int                     hop_count_      = 0;
 	    int                     start_time_     = 0;
 	    int                     arrival_time_   = 0;
+		int						hop_timestamp_	= 0;
 		static int				ID_COUNTER;
-		int						label			= 0;
+		int						label_			= 0;
+		int						envelope_label_ = 0;
 	 
-	    bool                    arrived_        = false;
 		bool					priority_		= false;
 	    std::shared_ptr<void>   ext_data_;
 
@@ -73,6 +80,7 @@ namespace DC
 	    message_type_{ _message_type }, source_{ _source }, destination_{ _destination }, contents_{ _contents }, start_time_{ start_time }
 	{
 		id_ = (int)(this);
-		label = ID_COUNTER++;
+		label_ = ID_COUNTER++;
+		envelope_label_ = label_;
 	}
 }

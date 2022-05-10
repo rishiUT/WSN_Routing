@@ -51,7 +51,7 @@ namespace DC
     class Node
     {
     public:
-		inline 					    Node(int label, int x, int y, bool is_actuator, bool is_active, AlgorithmBase& algo, double battery);
+		inline 					    Node(int label, int x, int y, bool has_sensor, bool active, AlgorithmBase& algo, double battery, int sensor_period);
         inline                      Node(Node const& other) = delete;
         inline Node&                operator=(Node const& other) = delete;
         inline                      Node(Node&& other) = delete;
@@ -72,8 +72,8 @@ namespace DC
         inline void                 read_msg(MessagePtr msg);
 
         //Algorithm-required functions
-        inline bool                 inbox_pending()                                                 { return !inbox_.empty(); }
-        inline MessagePtr           pop_inbox()                                                     { return inbox_.pop(); }
+        inline bool                 inbox_pending()                                                 { return !inbox_.empty(now()); }
+        inline MessagePtr           pop_inbox()                                                     { return inbox_.pop(now()); }
         inline void                 push_outbox(MessagePtr new_message)                             { outbox_.push(new_message); }
         inline std::vector<Node*>&  neighbors()                                                     { return neighbors_; }
         inline std::vector<Node*>&  destinations()                                                  { return destinations_; }
@@ -105,6 +105,7 @@ namespace DC
     	/* data */
         int                 num_destinations_{};
         int                 num_ticks_;
+        int                 sensor_period_;
         double              battery_remaining_mA_;
         double              battery_used_mA_ = 0;
         double              battery_max_mA_;
@@ -120,8 +121,9 @@ namespace DC
         AlgorithmBase* algo_;
     };
 
-    inline Node::Node(int label, int x, int y, bool has_sensor, bool active, AlgorithmBase& algo, double battery) :
-        label_{ label }, active_{ active }, has_sensor_{ has_sensor }, num_ticks_{ 0 }, battery_remaining_mA_{battery},
+    inline Node::Node(int label, int x, int y, bool has_sensor, bool active, AlgorithmBase& algo, double battery, int sensor_period) :
+        label_{ label }, active_{ active }, has_sensor_{ has_sensor }, num_ticks_{ 0 }, sensor_period_(sensor_period),
+        battery_remaining_mA_{battery},
         algo_{&algo}
     {
         id_ = this;
@@ -158,17 +160,22 @@ namespace DC
         Node* recipient = msg->hop_destination();
         msg->set_hop_source(id_);
         msg->increment_hop();
+        msg->set_hop_timestamp(now());
         recipient->receive_message(msg);
         sent_msg_count++;
         battery_remaining_mA_ -= MSG_SEND_COST;
         battery_used_mA_ += MSG_SEND_COST;
+        int dest_label = msg->destination() ? msg->destination()->label() : -1;
+        MessageHopLogEntry entry{ msg->source()->label(), dest_label, msg->hop_source()->label(), msg->hop_destination()->label(),
+            msg->label(), now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+        (*algo_).logger_.addEntry(entry);
     }
 
     inline void Node::broadcast(MessagePtr msg)
     {
         msg->set_hop_source(id_);
         msg->increment_hop();
-        //msg.set_hop_destination(nullptr); //Use this if the neighbor should know it's a broadcast
+        msg->set_hop_timestamp(now());
         for (Node* neighbor : neighbors_) {
             MessagePtr new_msg{ new Message(*msg) };
 			new_msg->set_hop_destination(neighbor);
@@ -177,11 +184,16 @@ namespace DC
         sent_msg_count++;
         battery_remaining_mA_ -= MSG_SEND_COST;
         battery_used_mA_ += MSG_RECV_COST;
+        int dest_label = msg->destination() ? msg->destination()->label() : -1;
+        MessageHopLogEntry entry{ msg->source()->label(), dest_label, msg->hop_source()->label(), -1,
+            msg->label(), now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+        (*algo_).logger_.addEntry(entry);
     }
 
     inline Node* Node::choose_destination() const
     {
         int val = std::rand();
+        // std::cout << val << "\t";
         val %= destinations_.size();
         return destinations_[val];
     }
@@ -223,8 +235,8 @@ namespace DC
         }
         */
 
-        if (!outbox_.empty()) {
-            MessagePtr to_send = outbox_.pop();
+        if (!outbox_.empty(now())) {
+            MessagePtr to_send = outbox_.pop(now());
             if (to_send->hop_destination() == nullptr) {
                 // This is a broadcast
                 broadcast(to_send);
@@ -262,7 +274,12 @@ namespace DC
     {
         recv_msg_count++;
         archive_.push(msg);
-        std::cout << "Node " << label_ << " Received this message: " << msg->contents() << std::endl; //Read the contents
-        std::cout << "Hop Count was " << msg->hop_count() << std::endl;
+        msg->set_arrival_time(now());
+        int dest_label = msg->destination() ? msg->destination()->label() : -1;
+        MessageHopLogEntry entry{ msg->source()->label(), dest_label, msg->hop_source()->label(), -1,
+            msg->label(), now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+        (*algo_).logger_.addEntry(entry);
+        //std::cout << "Node " << label_ << " Received this message: " << msg->contents() << std::endl; //Read the contents
+        //std::cout << "Hop Count was " << msg->hop_count() << std::endl;
     }
 }

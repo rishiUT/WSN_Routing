@@ -158,5 +158,7 @@ You're done with the inbox for this turn. If self.num_ticks is a multiple of you
  *  Unrandomize the nodes
  *  Add congestion by changing node message frequencies
  *
+ *  Add delay to RASER
+ *
  *
  */

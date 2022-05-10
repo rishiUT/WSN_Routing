@@ -7,6 +7,7 @@ namespace DC
 {
 
     class AlgorithmRaser : public AlgorithmBase {
+        using Base = AlgorithmBase;
     public:
 	    struct node_metadata {
 	        node_metadata() = default;
@@ -16,7 +17,7 @@ namespace DC
 	    };
 
 	    struct msg_metadata {
-	        int sender_hop_count_ = 0;
+            std::map<Node*, int> sender_hop_counts_;
 	    };
         AlgorithmRaser() = default;
         ~AlgorithmRaser() = default;
@@ -29,9 +30,15 @@ namespace DC
         inline void                     on_message_init(MessagePtr msg) override;
         inline void                     on_node_init(Node* self) override;
         inline void                     on_neighbor_added(Node* self, Node* neighbor) override;
-        inline void				        on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
+        inline void				        on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override;
+        inline void                     on_end(std::ostream& os) override;
 
         void    operator()(Node* node, MessagePtr sensor_data) override;
+
+    private:
+        int num_ticks_ = 0;
+        int num_nodes_ = 0;
+
     };
 
     inline void AlgorithmRaser::on_message_init(MessagePtr msg)
@@ -43,15 +50,26 @@ namespace DC
     inline void AlgorithmRaser::on_node_init(Node* self)
     {
         auto ext_data = new node_metadata();
-        for (Node* n : self->neighbors())
+        for (Node* n : self->destinations())
         {
-            ext_data->hop_counts_[n] = -1; //-1 = "no known path"
+            ext_data->hop_counts_[n] = INT_MAX; //Initialize to worst-case scenario
+            if (n->label() == self->label())
+            {
+	            //This is me
+                ext_data->hop_counts_[n] = 0; //Initialize to worst-case scenario
+            }
         }
         self->set_ext_data(ext_data);
     }
 
     inline void AlgorithmRaser::on_neighbor_added(Node* self, Node* neighbor)
     {
+    }
+
+    inline void AlgorithmRaser::on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations)
+    {
+        num_nodes_ = static_cast<int>(nodes.size());
+        num_ticks_++;
     }
 
     inline void AlgorithmRaser::operator()(Node* node, MessagePtr sensor_data)
@@ -61,7 +79,10 @@ namespace DC
             //Handle this message
             MessagePtr msg = sensor_data;
             Node* dst = msg->destination();
-            msg->ext_data<msg_metadata>()->sender_hop_count_ = node->ext_data<node_metadata>()->hop_counts_[dst];
+            for (auto& dest : node->destinations())
+            {
+                msg->ext_data<msg_metadata>()->sender_hop_counts_[dest] = node->ext_data<node_metadata>()->hop_counts_[dest];
+            }
             msg->set_hop_source(node);
             msg->set_hop_destination(nullptr); //This is a broadcast
             node->push_outbox(msg);
@@ -71,15 +92,25 @@ namespace DC
             node->add_neighbor(*(msg->hop_source()));
             Node* dst = msg->destination();
 
-            if (msg->ext_data<msg_metadata>()->sender_hop_count_ != -1 && (node->ext_data<node_metadata>()->hop_counts_[dst] == -1 || msg->ext_data<msg_metadata>()->sender_hop_count_ + 1 < node->ext_data<node_metadata>()->hop_counts_[dst]))
+            node_metadata node_mtdt = *node->ext_data<node_metadata>();
+            node_metadata sender_mtdt = *msg->hop_source()->ext_data<node_metadata>();
+            msg_metadata msg_mtdt = *msg->ext_data<msg_metadata>();
+
+            for (auto& dest : node->destinations())
             {
-                //This is either the shortest or the only path we've seen to this destination
-                node->ext_data<node_metadata>()->hop_counts_[dst] = msg->ext_data<msg_metadata>()->sender_hop_count_ + 1;
+                int sender_hop_count = msg->ext_data<msg_metadata>()->sender_hop_counts_[dest];
+                int receiver_hop_count = node->ext_data<node_metadata>()->hop_counts_[dest];
+                if (sender_hop_count != INT_MAX && (receiver_hop_count == INT_MAX || sender_hop_count + 1 < receiver_hop_count))
+	            {
+	                //This is either the shortest or the only path we've seen to this destination
+	                node->ext_data<node_metadata>()->hop_counts_[dest] = sender_hop_count + 1;
+	            }
             }
+            
             if (dst != nullptr && dst != node->id()) {
                 if (node->ext_data<node_metadata>()->temp_inbox_.contains(msg))
                 {
-                    if (msg->ext_data<msg_metadata>()->sender_hop_count_ < node->ext_data<node_metadata>()->hop_counts_[dst])
+                    if (msg->ext_data<msg_metadata>()->sender_hop_counts_[dst] < node->ext_data<node_metadata>()->hop_counts_[dst])
                     {
                         node->ext_data<node_metadata>()->temp_inbox_.remove(msg);
                     } else
@@ -88,13 +119,15 @@ namespace DC
                     }
                 } else
                 {
-                    if (msg->ext_data<msg_metadata>()->sender_hop_count_ < node->ext_data<node_metadata>()->hop_counts_[dst] || (msg->ext_data<msg_metadata>()->sender_hop_count_ == node->ext_data<node_metadata>()->hop_counts_[dst] && !msg->priority()))
+                    int sender_hop_count = msg->ext_data<msg_metadata>()->sender_hop_counts_[dst];
+                    int receiver_hop_count = node->ext_data<node_metadata>()->hop_counts_[dst];
+                    if (sender_hop_count < receiver_hop_count || (sender_hop_count == receiver_hop_count && !msg->priority()))
                     {
 	                    // Ignore it
                     }
                     else
                     {
-	                    if (msg->ext_data<msg_metadata>()->sender_hop_count_ == node->ext_data<node_metadata>()->hop_counts_[dst] && msg->priority())
+	                    if (sender_hop_count == receiver_hop_count && msg->priority())
 	                    {
                             msg->set_priority(false);
 	                    }
@@ -114,13 +147,38 @@ namespace DC
             else {
                 //This is for us! Read the message, the determine if it's a duplicate.
                 const auto ext_data = msg->ext_data<msg_metadata>();
-                node->read_msg(msg);
-                msg->set_arrival_time(node->now());
+                if (dst != nullptr)
+                {
+                    node->read_msg(msg);
+                    msg->set_arrival_time(node->now());
+                }
                 if (!node->ext_data<node_metadata>()->received_msgs.contains(msg))
                 {
                     node->ext_data<node_metadata>()->received_msgs.push(msg);
                 }
             }
         }
+        if (num_ticks_ % num_nodes_ == node->label() - 1)
+        {
+            if (!node->ext_data<node_metadata>()->temp_inbox_.empty(node->now()))
+            {
+                node->push_outbox(node->ext_data<node_metadata>()->temp_inbox_.pop(node->now()));
+            } else
+            {
+                std::string content = "Alive";
+                MessagePtr to_send{ new Message{ node, nullptr, content, node->now() } };
+                on_message_init(to_send);
+                for (auto& dest : node->destinations())
+                {
+                    to_send->ext_data<msg_metadata>()->sender_hop_counts_[dest] = node->ext_data<node_metadata>()->hop_counts_[dest];
+                }
+                node->push_outbox(to_send);
+            }
+        }
+    }
+
+	inline void AlgorithmRaser::on_end(std::ostream & os)
+    {
+        logger_.print(os);
     }
 }

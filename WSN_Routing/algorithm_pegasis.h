@@ -27,6 +27,7 @@ namespace DC
         inline void             on_node_init(Node* msg) override;
 	    inline void             on_neighbor_added(Node* self, Node* neighbor) override {}
         inline void				on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override;
+        inline void             on_end(std::ostream& os) override;
 
         inline void             operator()(Node* self, MessagePtr sensor_data) override;
 
@@ -36,8 +37,9 @@ namespace DC
         inline auto get_closest_node(std::vector<Node*> nodes, Node* destination, bool needs_disconnected = true);
         bool has_node(std::vector<Node*> node_list, Node* node);
         inline void find_forwarding_node(Node* node, Node* dest);
+	    void connected_create_chain(std::vector<Node*> nodes, Node* dest);
 
-        int breakCounter_ = 0;
+	    int breakCounter_ = 0;
 
     };
 
@@ -147,9 +149,24 @@ namespace DC
         node->ext_data<node_metadata>()->nearest_neighbors[&(*dest)] = best_option;
     }
 
+    inline void AlgorithmPegasis::connected_create_chain(std::vector<Node*> nodes, Node* dest)
+    {
+	    Node* furthest = get_furthest_node(nodes, dest);
+        furthest->ext_data<node_metadata>()->disconnected = false;
+        while (has_disconnected_node(nodes))
+        {
+            Node* next = get_furthest_node(nodes, dest);
+            furthest->ext_data<node_metadata>()->nearest_neighbors[dest] = next;
+            next->ext_data<node_metadata>()->disconnected = false;
+            furthest = next;
+        }
+
+        furthest->ext_data<node_metadata>()->nearest_neighbors[dest] = dest;
+    }
+
     inline void AlgorithmPegasis::on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations)
     {
-        if (breakCounter_ % 10 == 0)
+        if (breakCounter_ % 2000 == 0)
         {
 	        for (auto dest = destinations.begin(); dest != destinations.end(); ++dest)
 	        {
@@ -158,12 +175,13 @@ namespace DC
 	                (*node)->ext_data<node_metadata>()->disconnected = ((*node)->id() != (*dest)->id());
 		        }
 
-	            while (has_disconnected_node(nodes))
-	            {
-	                Node* destNode = *dest;
-	                auto furthest_node = get_furthest_node(nodes, destNode);
-	                find_forwarding_node(furthest_node, *dest);
-	            }
+	            //while (has_disconnected_node(nodes))
+	            //{
+	            //    Node* destNode = *dest;
+	            //    auto furthest_node = get_furthest_node(nodes, destNode);
+	            //    find_forwarding_node(furthest_node, *dest);
+	            //}
+                connected_create_chain(nodes, *dest);
 	        }
 
             for (auto& node : nodes)
@@ -214,8 +232,14 @@ namespace DC
             else {
                 //This is for us! If it isn't an alive message, read the message, then do nothing.
                 if (dst != nullptr) { self->read_msg(msg); }
+                msg->set_arrival_time(self->now());
             }
         }
+    }
+
+    inline void AlgorithmPegasis::on_end(std::ostream& os)
+    {
+        logger_.print(os);
     }
 }
 

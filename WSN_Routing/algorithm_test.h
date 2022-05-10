@@ -18,6 +18,7 @@ namespace DC
 		inline void				on_node_init(Node* msg) override {}
 		inline void				on_neighbor_added(Node* self, Node* neighbor) override {}
 		inline void				on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
+		inline void				on_end(std::ostream& os) override {}
 
 		inline void				operator()(Node* self, MessagePtr sensor_data) override;
 	};

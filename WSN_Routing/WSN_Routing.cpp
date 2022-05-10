@@ -11,14 +11,13 @@
 
 int main()
 {
-    std::cout << "Hello World!\n";
     DC::AlgorithmTest test;
     DC::Algorithm algo;
     DC::AlgorithmRaser raser;
     DC::AlgorithmPegasis pegasis;
-    DC::Environment env{ algo, 10, 4 };
+    DC::Environment env{ pegasis, 5, 40, 40, 4, 10 , 200, "output.tab"};
     env.print_layout();
-    env.run(10, 0);
+    env.run_messages(5, 200);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

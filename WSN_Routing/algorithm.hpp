@@ -5,6 +5,7 @@
 #include <map>
 #include "algorithm_base.h"
 #include <cassert>
+#include "logger.h"
 
 /*
  *	NOTE:
@@ -61,12 +62,14 @@ namespace DC
 		inline void				on_message_init(MessagePtr msg) override;
 		inline void				on_node_init(Node* self) override;
 		inline void				on_neighbor_added(Node* self, Node* neighbor) override;
+		inline void				on_end(std::ostream& os) override;
 
 		inline void				operator()(Node* self, MessagePtr sensor_data) override;
 		inline void				on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations) override {}
 	private:
 	    void					update_values(Node* self, Node* destination, Node* neighbor, int distance, int time);
 	    inline static Node*		choose_recipient(Node* self, Node* destination);
+
 	};
 
 	inline void Algorithm::operator()(Node* self, MessagePtr sensor_data=nullptr) {
@@ -84,6 +87,9 @@ namespace DC
 				msg->set_hop_destination(best_n);
 				msg->ext_data<msg_metadata>()->push_signature(Signature(self->id(), self->now()));
 				self->push_outbox(msg);
+				//MessageHopLogEntry entry{ msg->source()->label(), msg->destination()->label(), msg->hop_source()->label(), msg->hop_destination()->label(),
+				//	msg->label(), self->now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+				//logger_.addEntry(entry);
 			}
 	    }
 	    else if (self->inbox_pending()) {
@@ -92,7 +98,7 @@ namespace DC
 	        Node* dst = msg->destination();
 	        if (dst != nullptr && dst != self->id()) {
 	            //This message needs to be forwarded
-	            if (msg->arrived()) {
+	            if (msg->ext_data<msg_metadata>()->arrived_) {
 	                //This message has reached its destination and is now an acknowledgement
 	                int distance = msg->ext_data<msg_metadata>()->hop_count_back_ + 1; //This is the number of times the message was forwarded before it arrived at the destination
 	                msg->ext_data<msg_metadata>()->hop_count_back_ = distance; //update the hop count
@@ -102,16 +108,24 @@ namespace DC
 	                // Were we the sender? If not, forward it back again
 	                if (msg->source() != self->id()) {
 	                    Node* previous = msg->ext_data<msg_metadata>()->peek_signature().sender_;
+						msg->set_hop_source(self);
 						msg->set_hop_destination(previous);
 	                    self->push_outbox(msg);
+						//MessageHopLogEntry entry{ msg->source()->label(), msg->destination()->label(), msg->hop_source()->label(), msg->hop_destination()->label(),
+						//	msg->label(), self->now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+						//logger_.addEntry(entry);
 	                }
 	            }
 	            else {
 	                //We still want to get closer to the destination
 	                Node* recvr = choose_recipient(self, dst);
 					msg->ext_data<msg_metadata>()->push_signature(Signature(self->id(), self->now()));
+					msg->set_hop_source(self);
 					msg->set_hop_destination(recvr);
 					self->push_outbox(msg);
+					//MessageHopLogEntry entry{ msg->source()->label(), msg->destination()->label(), msg->hop_source()->label(), msg->hop_destination()->label(),
+					//	msg->label(), self->now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+					//logger_.addEntry(entry);
 	            }
 	        }
 	        else {
@@ -120,14 +134,20 @@ namespace DC
 				ext_data->push_signature(Signature(self->id(), self->now()));
 
 	            self->read_msg(msg); // This is where you'd normally do something with the data
+				//assert(msg->ext_data<msg_metadata>()->arrived_ == false);
 
-	            msg->set_arrival_time(self->now());
+				msg->ext_data<msg_metadata>()->arrived_ = true;
 
 	        	Signature sig = ext_data->pop_signature();
+				sig = ext_data->peek_signature();
 	            Node* previous = sig.sender_;
 
+				msg->set_hop_source(self);
 	        	msg->set_hop_destination(previous);
 				self->push_outbox(msg);
+				//MessageHopLogEntry entry{ msg->source()->label(), msg->destination()->label(), msg->hop_source()->label(), msg->hop_destination()->label(),
+				//	msg->label(), self->now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+				//logger_.addEntry(entry);
 	        }
 	    }
 	}
@@ -216,5 +236,10 @@ namespace DC
 		{
 			ext_data->values_[d][neighbor] = 0; //-1 = "no value known, no route found, etc."
 		}
+	}
+
+	inline void Algorithm::on_end(std::ostream& os)
+	{
+		logger_.print(os);
 	}
 }

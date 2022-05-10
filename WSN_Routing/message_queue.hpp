@@ -9,8 +9,8 @@ namespace DC
 		MessageQueue();
 		void push(MessagePtr msg);
 		void priority_push(MessagePtr msg);
-		MessagePtr pop();
-		bool empty();
+		MessagePtr pop(int curr_time);
+		bool empty(int curr_time);
 		bool contains(MessagePtr msg);
 		bool remove(MessagePtr msg);
 	private:
@@ -45,15 +45,15 @@ namespace DC
 		}
 	}
 
-	MessagePtr MessageQueue::pop() {
-		_ASSERT(!empty());
+	MessagePtr MessageQueue::pop(int curr_time) {
+		_ASSERT(!empty(curr_time));
 		MessagePtr val = msgs.front();
 		msgs.pop_front();
 		return val;
 	}
 
-	bool MessageQueue::empty() {
-		return msgs.empty();
+	bool MessageQueue::empty(int curr_time) {
+		return msgs.empty() || (msgs.front()->hop_timestamp() >= curr_time);
 	}
 
 	inline bool MessageQueue::contains(MessagePtr msg)

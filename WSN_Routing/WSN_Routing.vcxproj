@@ -149,6 +149,7 @@
     <ClInclude Include="algorithm_raser.h" />
     <ClInclude Include="algorithm_test.h" />
     <ClInclude Include="environment.h" />
+    <ClInclude Include="logger.h" />
     <ClInclude Include="message.hpp" />
     <ClInclude Include="message_queue.hpp" />
     <ClInclude Include="msg_pending_list.h" />
