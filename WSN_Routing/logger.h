@@ -17,6 +17,7 @@ namespace DC{
 		int startTime = 0;
 		int endTime = 0;
 		int travelTime = 0;
+		bool arrival_hop = false;
 
 		void print(std::ostream& os)
 		{
@@ -29,6 +30,7 @@ namespace DC{
 			os << hopCount << "\t";
 			os << startTime << "\t";
 			os << endTime << "\t";
+			os << arrival_hop << "\t";
 			os << travelTime << "\n";
 		}
 	};
@@ -54,7 +56,7 @@ namespace DC{
 	public:
 
 		void addEntry(T const& entry);
-		void print(std::ostream& os);
+		void print(std::ostream& os, bool arrival_only = false);
 		
 	private:
 		friend std::ostream& operator<<(std::ostream& os, Logger const& entry);
@@ -70,7 +72,7 @@ namespace DC{
 	}
 
 	template <typename T>
-	void Logger<T>::print(std::ostream& os)
+	void Logger<T>::print(std::ostream& os, bool arrival_only)
 	{
 		os << "srcNode" << "\t";
 		os << "destNode" << "\t";
@@ -81,30 +83,35 @@ namespace DC{
 		os << "hopCount" << "\t";
 		os << "startTime" << "\t";
 		os << "endTime" << "\t";
+		os << "arrival_hop" << "\t";
 		os << "travelTime" << "\n";
 		for(auto& entry: _entries)
 		{
-			entry.print(os);
+			if(!arrival_only || entry.arrival_hop)
+			{
+				entry.print(os);
+			}
 		}
 	}
-	template<typename T>
-	inline std::ostream& operator<<(std::ostream& os, Logger<T> const& logger)
-	{
-		os << "srcNode" << "\t";
-		os << "destNode" << "\t";
-		os << "hopSource" << "\t";
-		os << "hopDest" << "\t";
-		os << "msgLabel" << "\t";
-		os << "timestamp" << "\t";
-		os << "hopCount" << "\t";
-		os << "startTime" << "\t";
-		os << "endTime" << "\t";
-		os << "travelTime" << "\n";
-		for (auto& entry : logger._entries)
-		{
-			os << entry;
-		}
-		return os;
-	}
+	//template<typename T>
+	//inline std::ostream& operator<<(std::ostream& os, Logger<T> const& logger)
+	//{
+	//	os << "srcNode" << "\t";
+	//	os << "destNode" << "\t";
+	//	os << "hopSource" << "\t";
+	//	os << "hopDest" << "\t";
+	//	os << "msgLabel" << "\t";
+	//	os << "timestamp" << "\t";
+	//	os << "hopCount" << "\t";
+	//	os << "startTime" << "\t";
+	//	os << "endTime" << "\t";
+	//	os << "arrival_hop" << "\t";
+	//	os << "travelTime" << "\n";
+	//	for (auto& entry : logger._entries)
+	//	{
+	//		os << entry;
+	//	}
+	//	return os;
+	//}
 
 }

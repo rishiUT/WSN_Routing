@@ -277,7 +277,7 @@ namespace DC
         msg->set_arrival_time(now());
         int dest_label = msg->destination() ? msg->destination()->label() : -1;
         MessageHopLogEntry entry{ msg->source()->label(), dest_label, msg->hop_source()->label(), -1,
-            msg->label(), now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time() };
+            msg->label(), now(), msg->hop_count(), msg->start_time(), msg->arrival_time(), msg->travel_time(), true };
         (*algo_).logger_.addEntry(entry);
         //std::cout << "Node " << label_ << " Received this message: " << msg->contents() << std::endl; //Read the contents
         //std::cout << "Hop Count was " << msg->hop_count() << std::endl;

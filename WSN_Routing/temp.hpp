@@ -162,3 +162,32 @@ You're done with the inbox for this turn. If self.num_ticks is a multiple of you
  *
  *
  */
+
+
+ /* bool leader_handoff = false;
+  * If you are not the leader,
+  *      find out if you're going left or right
+  *      Check the neighbor on that direction; if they are null:
+  *          Switch directions
+  *      To the neighbor in the current direction, send all your messages in your inbox
+  *          If there aren't any, do nothing
+  *      The current node is now the neighbor you handed the turn to
+  *  If you are the leader,
+  *      If the current direction is left,
+  *          If second_round is false,
+  *              Send messages to the left! We just started.
+  *              If there isn't anyone on the left,
+  *                  switch it to right
+  *                  set second_round to true
+  *                  and carry on
+  *          Else, everyone has finished sending messages.
+  *              leader_handoff = true
+  *      else,
+  *          We're halfway! set second_round to true
+  *          If there's a node on the right, Send messages to the node on the right
+  *          else we're done, leader_handoff = true
+  *      If leader_handoff:
+  *          Send all messages to the base station (dest)
+  *          Choose a new leader (the node on the left if they exist, rightmost node otherwise)
+  *          Pass the turn to this node
+  */

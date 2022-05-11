@@ -145,16 +145,12 @@ namespace DC
                 }
             }
             else {
-                //This is for us! Read the message, the determine if it's a duplicate.
+                //This is for us! Read the message, and determine if it's a duplicate.
                 const auto ext_data = msg->ext_data<msg_metadata>();
-                if (dst != nullptr)
+                if (dst != nullptr && !node->ext_data<node_metadata>()->received_msgs.contains(msg))
                 {
                     node->read_msg(msg);
-                    msg->set_arrival_time(node->now());
-                }
-                if (!node->ext_data<node_metadata>()->received_msgs.contains(msg))
-                {
-                    node->ext_data<node_metadata>()->received_msgs.push(msg);
+					node->ext_data<node_metadata>()->received_msgs.push(msg);
                 }
             }
         }

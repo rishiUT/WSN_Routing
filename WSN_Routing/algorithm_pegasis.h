@@ -8,8 +8,10 @@ namespace DC
     class AlgorithmPegasis : public AlgorithmBase {
     public:
 	    struct node_metadata {
-	        node_metadata() = default;
-	        std::map<Node*, Node*> nearest_neighbors;
+	        node_metadata();
+	        std::map<Node*, Node*> nearest_neighbors_left;
+	        std::map<Node*, Node*> nearest_neighbors_right;
+            std::map<Node*, bool> is_leader;
 	        bool disconnected = true;
 	    };
 
@@ -54,7 +56,9 @@ namespace DC
         auto ext_data = new node_metadata();
         for (Node* n : self->destinations())
         {
-            ext_data->nearest_neighbors[n] = nullptr; //null_ptr = "no known path"
+            ext_data->nearest_neighbors_left[n] = nullptr; //null_ptr = "no known path"
+            ext_data->nearest_neighbors_right[n] = nullptr; //null_ptr = "no known path"
+            ext_data->is_leader[n] = false;
         }
         self->set_ext_data(ext_data);
     }
@@ -146,22 +150,24 @@ namespace DC
             //Since the new neighbor isn't in a chain, 
         }
 
-        node->ext_data<node_metadata>()->nearest_neighbors[&(*dest)] = best_option;
+        node->ext_data<node_metadata>()->nearest_neighbors_right[&(*dest)] = best_option;
     }
 
     inline void AlgorithmPegasis::connected_create_chain(std::vector<Node*> nodes, Node* dest)
     {
 	    Node* furthest = get_furthest_node(nodes, dest);
         furthest->ext_data<node_metadata>()->disconnected = false;
+        furthest->ext_data<node_metadata>()->nearest_neighbors_left[dest] = nullptr;
         while (has_disconnected_node(nodes))
         {
             Node* next = get_furthest_node(nodes, dest);
-            furthest->ext_data<node_metadata>()->nearest_neighbors[dest] = next;
+            furthest->ext_data<node_metadata>()->nearest_neighbors_right[dest] = next;
+            next->ext_data<node_metadata>()->nearest_neighbors_left[dest] = furthest;
             next->ext_data<node_metadata>()->disconnected = false;
             furthest = next;
         }
 
-        furthest->ext_data<node_metadata>()->nearest_neighbors[dest] = dest;
+        furthest->ext_data<node_metadata>()->nearest_neighbors_right[dest] = nullptr;
     }
 
     inline void AlgorithmPegasis::on_tick(std::vector<Node*> nodes, std::vector<Node*> destinations)
@@ -192,6 +198,12 @@ namespace DC
                 node->broadcast(msg);
             }
         }
+
+        if (breakCounter_ % nodes.size() == 0)
+        {
+	        //It's the beginning of a round; select a leader node
+        }
+
         breakCounter_++;
     }
 

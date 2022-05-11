@@ -13,7 +13,7 @@ namespace DC
 		using NodeUnqPtr		= std::unique_ptr<Node>;
 		using NodeVector		= std::vector<NodeUnqPtr>;
 	public:
-		inline					Environment(AlgorithmBase& algorithm, int node_distance, int x_dim, int y_dim, int actuator_count, int comm_range, int sensor_period, std::string file_name);
+		inline					Environment(AlgorithmBase& algorithm, int node_distance, int x_dim, int y_dim, int actuator_count, int comm_range, int sensor_period, int high_load_sensor_period, std::string file_name);
 		int						get_sensory_probability(int x, int y);
 		int						get_sensor_period(int x, int y);
 		void					run_timesteps(int update_timeframe, int loop_count);
@@ -25,17 +25,21 @@ namespace DC
 		NodeVector				nodes_;
 		std::vector<Node*>		destinations_;
 
-		int x_dim_;
-		int y_dim_;
+		int						x_dim_;
+		int						y_dim_;
+		bool					under_increased_load = false;
+		int						sensor_period_ = 0;
+		int						high_load_sensor_period_ = 0;
 
-		std::string file_name_;
+		std::string				file_name_;
 
 		bool					partitioned();
 		void					print_nodes();
+		void					change_load(int new_sensor_period);
 	};
 
-	inline Environment::Environment(AlgorithmBase& algorithm, int node_distance, int x_dim, int y_dim, int actuator_count, int comm_range, int sensor_period, std::string file_name):
-		algorithm_ { &algorithm }, x_dim_(x_dim), y_dim_(y_dim), file_name_(file_name)
+	inline Environment::Environment(AlgorithmBase& algorithm, int node_distance, int x_dim, int y_dim, int actuator_count, int comm_range, int sensor_period, int high_load_sensor_period, std::string file_name):
+		algorithm_{ &algorithm }, x_dim_(x_dim), y_dim_(y_dim), sensor_period_{ sensor_period }, high_load_sensor_period_{ high_load_sensor_period }, file_name_(file_name)
 	{
 		assert(node_distance <= comm_range);
 		std::srand(15);  // NOLINT(cert-msc51-cpp)
@@ -69,6 +73,7 @@ namespace DC
 			{
 				nodes_[i]->add_destination(*nodes_[act_ndx]);
 			}
+			algorithm_->on_node_init(nodes_[i].get());
 		}
 
 		for(auto& srcNode : nodes_)
@@ -85,7 +90,6 @@ namespace DC
 					}
 				}
 			}
-			algorithm_->on_node_init(srcNode.get());
 		}
 	}
 
@@ -140,6 +144,8 @@ namespace DC
 
 	inline void Environment::run_timesteps(int update_timeframe, int loop_count)
 	{
+		int load_change_period = loop_count / 3;
+
 		for (int i = 0; i < loop_count; i++)
 		{
 			std::vector<Node*> node_list;
@@ -162,8 +168,21 @@ namespace DC
 			{
 				update_stats();
 			}
+
+			if((i + 1) % load_change_period == 0)
+			{
+				int new_sensor_period = under_increased_load ? sensor_period_ : high_load_sensor_period_;
+				change_load(new_sensor_period);
+				under_increased_load = !under_increased_load;
+			}
 		}
 		print_nodes();
+		//std::cout << "Sent Message Total: " << num_messages_created << "; Arrived Message Total: " << num_messages_arrived << std::endl;
+
+		std::ofstream file{ file_name_ };
+
+		//algorithm_->on_end(std::cout);
+		algorithm_->on_end(file);
 	}
 
 	inline void Environment::update_stats()
@@ -186,7 +205,7 @@ namespace DC
 		int num_messages_created = 0;
 		int num_messages_arrived = 0;
 		int cooldown_timer = 0;
-		int max_cooldown = 10000;
+		int max_cooldown = 5000;
 		int i = 0;
 		while (num_messages_arrived < message_count && cooldown_timer < max_cooldown)
 		{
@@ -310,5 +329,24 @@ namespace DC
 		// Calculations:
 			// Using the sent and received message counts, calculate the number/percentage of lost messages
 			// Calculate the average hop count and the average number of timesteps for the messages, then sort the messages by the times they were sent
+	}
+
+	inline void Environment::change_load(int new_sensor_period)
+	{
+		int min_x = x_dim_ / 3;
+		int min_y = y_dim_ / 3;
+		int max_x = x_dim_ * 2 / 3;
+		int max_y = y_dim_ * 2 / 3;
+
+		for(auto&& node : nodes_)
+		{
+			int node_x = node->ed.location_.x_;
+			int node_y = node->ed.location_.y_;
+
+			if(node_x > min_x && node_x <= max_x && node_y > min_y && node_y <= max_y)
+			{
+				node->sensor_period_ = new_sensor_period;
+			}
+		}
 	}
 }
